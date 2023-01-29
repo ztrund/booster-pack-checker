@@ -225,3 +225,6 @@ fabric.properties
 # User
 *.txt
 *.db
+
+# Ignore .idea folder
+.idea/
