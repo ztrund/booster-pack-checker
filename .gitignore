@@ -228,3 +228,4 @@ fabric.properties
 
 # Ignore .idea folder
 .idea/
+/cookies
