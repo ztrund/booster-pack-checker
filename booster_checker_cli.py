@@ -58,6 +58,11 @@ def login():  # Add Error Catching
 
 
 def update_boosters():
+    if not check_login():
+        if input(
+                'It looks like you are not logged in, the update rate will be significantly slower (Press 1 if you wish'
+                'to continue without logging in):') != 1:
+            return
     print('Updating Boosters...')
     base_url = 'https://steamcommunity.com/market/search/render/?q=&category_753_Game%5B%5D=any' \
                '&category_753_item_class%5B%5D=tag_item_class_5&appid=753&count=100&norender=1&sort_column=name&start='
@@ -109,33 +114,51 @@ def update_cards():
     print('Updating Trading Cards...')
 
 
-def check_login():
+def check_login() -> bool:
     print('Checking Login Status...')
     response_logged_in = req_sess.get('https://steamcommunity.com/my', allow_redirects=False)
-    print(response_logged_in.status_code)
-    print(response_logged_in.headers)
-    print(response_logged_in.reason)
-    print(response_logged_in.cookies)
-    print(response_logged_in.raw)
-    print(response_logged_in.encoding)
-    print(response_logged_in.elapsed)
+    if response_logged_in.status_code == 302:
+        if 'login/home/?goto=%2Fmy' in response_logged_in.headers['Location']:
+            print('Not Logged In')
+            return False
+        else:
+            print('Logged In')
+            return True
+    else:
+        print(response_logged_in.status_code)
+        print(response_logged_in.headers)
+        print(response_logged_in.reason)
+        print(response_logged_in.cookies)
+        print(response_logged_in.raw)
+        print(response_logged_in.encoding)
+        print(response_logged_in.elapsed)
+        return False
 
 
-def logout():
+def logout() -> bool:
     print('Logging Out...')
     response_logout = req_sess.post('https://steamcommunity.com/login/logout/',
                                     data={'sessionid': req_sess.cookies.get('sessionid')})
-    print(response_logout.status_code)
-    print(response_logout.headers)
-    print(response_logout.reason)
-    print(response_logout.cookies)
-    print(response_logout.raw)
-    print(response_logout.encoding)
-    print(response_logout.content)
-    print(response_logout.elapsed)
-    print(response_logout.history)
-    print(response_logout.url)
-    print(response_logout.links)
+    if response_logout.status_code == 200:
+        if '/login/logout/' in response_logout.url:
+            print('Logout was successful')
+            return True
+        else:
+            print('Logout was unsuccessful, you might already be logged out.')
+            return False
+    else:
+        print(response_logout.status_code)
+        print(response_logout.headers)
+        print(response_logout.reason)
+        print(response_logout.cookies)
+        print(response_logout.raw)
+        print(response_logout.encoding)
+        print(response_logout.content)
+        print(response_logout.elapsed)
+        print(response_logout.history)
+        print(response_logout.url)
+        print(response_logout.links)
+        return False
 
 
 if __name__ == '__main__':
