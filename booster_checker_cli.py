@@ -61,7 +61,7 @@ def update_boosters():
     if not check_login():
         if input(
                 'It looks like you are not logged in, the update rate will be significantly slower (Press 1 if you wish'
-                'to continue without logging in):') != 1:
+                ' to continue without logging in):') != '14':
             return
     print('Updating Boosters...')
     base_url = 'https://steamcommunity.com/market/search/render/?q=&category_753_Game%5B%5D=any' \
@@ -101,7 +101,7 @@ def update_boosters():
         cur.executemany("INSERT OR REPLACE INTO packs VALUES(?, ?, ?, ?, ?)", bulk_packs)
         conn.commit()
         start += 100
-        print(start)
+        print(start, '/', data['total_count'])
         # if start >= 1000:
         #     break
         if start >= data['total_count']:
@@ -111,7 +111,76 @@ def update_boosters():
 
 
 def update_cards():
+    if not check_login():
+        if input(
+                'It looks like you are not logged in, the update rate will be significantly slower (Press 1 if you wish'
+                ' to continue without logging in):') != '1':
+            return
     print('Updating Trading Cards...')
+    base_url = 'https://steamcommunity.com/market/search/render?q=&category_753_Game%5B%5D=any' \
+               '&category_753_item_class%5B%5D=tag_item_class_2&appid=753&count=100&norender=1&sort_column=name&start='
+    start = 0
+    retry_attempts = 0
+    conn = sqlite3.connect('booster-packs.db')
+    cur = conn.cursor()
+    cur.execute("""CREATE TABLE IF NOT EXISTS cards (
+                game_id INT NOT NULL, 
+                name TEXT, 
+                is_foil INT, 
+                listings INT, 
+                price INT, 
+                update_timestamp INT, 
+                PRIMARY KEY (game_id, name), 
+                FOREIGN KEY (game_id) REFERENCES packs(id));""")
+    while True:
+        response = req_sess.get(base_url + str(start))
+        if response.status_code != 200:
+            print('Error' + str(response.status_code))
+            print(response.headers)
+            print(response.reason)
+            print(response.cookies)
+            print(response.raw)
+            print(response.encoding)
+            print(response.elapsed)
+            break
+        data = response.json()
+        if data['success'] and retry_attempts <= 10:
+            if int(data['total_count']) > 0:
+                retry_attempts = 0
+                bulk_cards = []
+                for result in data['results']:
+                    card = result['hash_name'].split('-', 1)
+                    card[0] = int(card[0])
+                    card.append(1 if 'Foil Trading Card' in result['asset_description']['type'] else 0)
+                    card.append(result['sell_listings'])
+                    card.append(result['sell_price'])
+                    card.append(time.time_ns())
+                    bulk_cards.append(card)
+                cur.executemany("INSERT OR REPLACE INTO cards VALUES(?, ?, ?, ?, ?, ?)", bulk_cards)
+                conn.commit()
+                start += 100
+                print(start, '/', data['total_count'])
+                # if start >= 1000:
+                #     break
+                if start >= data['total_count']:
+                    break
+            else:
+                retry_attempts += 1
+            time.sleep(1)
+        else:
+            print(response.status_code)
+            print(response.headers)
+            print(response.reason)
+            print(response.cookies)
+            print(response.raw)
+            print(response.encoding)
+            print(response.content)
+            print(response.elapsed)
+            print(response.history)
+            print(response.url)
+            print(response.links)
+            break
+    conn.close()
 
 
 def check_login() -> bool:
