@@ -48,13 +48,6 @@ def login():  # Add Error Catching
                                          'rsatimestamp': response_rsa.json()['timestamp'], 'twofactorcode': two_factor})
     with open('cookies', 'wb') as f:
         pickle.dump(req_sess.cookies, f)
-    print(response_login.status_code)
-    print(response_login.headers)
-    print(response_login.reason)
-    print(response_login.cookies)
-    print(response_login.raw)
-    print(response_login.encoding)
-    print(response_login.elapsed)
 
 
 def update_boosters():
@@ -67,47 +60,51 @@ def update_boosters():
     base_url = 'https://steamcommunity.com/market/search/render/?q=&category_753_Game%5B%5D=any' \
                '&category_753_item_class%5B%5D=tag_item_class_5&appid=753&count=100&norender=1&sort_column=name&start='
     start = 0
-    conn = sqlite3.connect('booster-packs.db')
-    cur = conn.cursor()
-    cur.execute("""CREATE TABLE IF NOT EXISTS packs (
-                id INT PRIMARY KEY NOT NULL, 
-                name TEXT, 
-                listings INT, 
-                price INT, 
-                update_timestamp INT);""")
-    while True:
-        response = req_sess.get(base_url + str(start))
-        if response.status_code != 200:
-            print('Error' + str(response.status_code))
-            print(response.headers)
-            print(response.reason)
-            print(response.cookies)
-            print(response.raw)
-            print(response.encoding)
-            print(response.elapsed)
-            break
-        data = response.json()
-        if data['success']:
-            bulk_packs = []
-            for result in data['results']:
-                pack = result['hash_name'].split('-', 1)
-                pack[0] = int(pack[0])
-                pack.append(result['sell_listings'])
-                pack.append(result['sell_price'])
-                pack.append(time.time_ns())
-                bulk_packs.append(pack)
-        else:
-            break
-        cur.executemany("INSERT OR REPLACE INTO packs VALUES(?, ?, ?, ?, ?)", bulk_packs)
-        conn.commit()
-        start += 100
-        print(start, '/', data['total_count'])
-        # if start >= 1000:
-        #     break
-        if start >= data['total_count']:
-            break
-        time.sleep(1)
-    conn.close()
+    retry_attempts = 0
+    with sqlite3.connect('booster-packs.db') as conn:
+        cur = conn.cursor()
+        cur.execute("""CREATE TABLE IF NOT EXISTS packs (
+                        id INT PRIMARY KEY NOT NULL, 
+                        name TEXT, 
+                        listings INT, 
+                        price INT, 
+                        update_timestamp INT);""")
+        while True:
+            response = req_sess.get(base_url + str(start))
+            if response.status_code != 200:
+                print_response(response)
+                break
+            data = response.json()
+            if data['success']:
+                if int(data['total_count']) > 0:
+                    retry_attempts = 0
+                    bulk_packs = []
+                    for result in data['results']:
+                        pack = result['hash_name'].split('-', 1)
+                        pack[0] = int(pack[0])
+                        pack.append(result['sell_listings'])
+                        pack.append(result['sell_price'])
+                        pack.append(time.time_ns())
+                        bulk_packs.append(pack)
+                    cur.executemany("INSERT OR REPLACE INTO packs VALUES(?, ?, ?, ?, ?)", bulk_packs)
+                    conn.commit()
+                    start += 100
+                    print('Updated (' + str(start) + '/' + str(data['total_count']) + ') Packs')
+                    # if start >= 1000:
+                    #     break
+                    if start >= data['total_count']:
+                        print('Updating Packs Complete')
+                        break
+                else:
+                    retry_attempts += 1
+                    if retry_attempts <= 10:
+                        print('Invalid Total Count Received Retrying...(' + str(retry_attempts) + '/10)')
+                    else:
+                        break
+                time.sleep(1)
+            else:
+                print_response(response)
+                break
 
 
 def update_cards():
@@ -121,66 +118,54 @@ def update_cards():
                '&category_753_item_class%5B%5D=tag_item_class_2&appid=753&count=100&norender=1&sort_column=name&start='
     start = 0
     retry_attempts = 0
-    conn = sqlite3.connect('booster-packs.db')
-    cur = conn.cursor()
-    cur.execute("""CREATE TABLE IF NOT EXISTS cards (
-                game_id INT NOT NULL, 
-                name TEXT, 
-                is_foil INT, 
-                listings INT, 
-                price INT, 
-                update_timestamp INT, 
-                PRIMARY KEY (game_id, name), 
-                FOREIGN KEY (game_id) REFERENCES packs(id));""")
-    while True:
-        response = req_sess.get(base_url + str(start))
-        if response.status_code != 200:
-            print('Error' + str(response.status_code))
-            print(response.headers)
-            print(response.reason)
-            print(response.cookies)
-            print(response.raw)
-            print(response.encoding)
-            print(response.elapsed)
-            break
-        data = response.json()
-        if data['success'] and retry_attempts <= 10:
-            if int(data['total_count']) > 0:
-                retry_attempts = 0
-                bulk_cards = []
-                for result in data['results']:
-                    card = result['hash_name'].split('-', 1)
-                    card[0] = int(card[0])
-                    card.append(1 if 'Foil Trading Card' in result['asset_description']['type'] else 0)
-                    card.append(result['sell_listings'])
-                    card.append(result['sell_price'])
-                    card.append(time.time_ns())
-                    bulk_cards.append(card)
-                cur.executemany("INSERT OR REPLACE INTO cards VALUES(?, ?, ?, ?, ?, ?)", bulk_cards)
-                conn.commit()
-                start += 100
-                print(start, '/', data['total_count'])
-                # if start >= 1000:
-                #     break
-                if start >= data['total_count']:
-                    break
+    with sqlite3.connect('booster-packs.db') as conn:
+        cur = conn.cursor()
+        cur.execute("""CREATE TABLE IF NOT EXISTS cards (
+                        game_id INT NOT NULL, 
+                        name TEXT, 
+                        is_foil INT, 
+                        listings INT, 
+                        price INT, 
+                        update_timestamp INT, 
+                        PRIMARY KEY (game_id, name), 
+                        FOREIGN KEY (game_id) REFERENCES packs(id));""")
+        while True:
+            response = req_sess.get(base_url + str(start))
+            if response.status_code != 200:
+                print_response(response)
+                break
+            data = response.json()
+            if data['success']:
+                if int(data['total_count']) > 0:
+                    retry_attempts = 0
+                    bulk_cards = []
+                    for result in data['results']:
+                        card = result['hash_name'].split('-', 1)
+                        card[0] = int(card[0])
+                        card.append(1 if 'Foil Trading Card' in result['asset_description']['type'] else 0)
+                        card.append(result['sell_listings'])
+                        card.append(result['sell_price'])
+                        card.append(time.time_ns())
+                        bulk_cards.append(card)
+                    cur.executemany("INSERT OR REPLACE INTO cards VALUES(?, ?, ?, ?, ?, ?)", bulk_cards)
+                    conn.commit()
+                    start += 100
+                    print('Updated (' + str(start) + '/' + str(data['total_count']) + ') Cards')
+                    # if start >= 1000:
+                    #     break
+                    if start >= data['total_count']:
+                        print('Updating Cards Complete')
+                        break
+                else:
+                    retry_attempts += 1
+                    if retry_attempts <= 10:
+                        print('Invalid Total Count Received Retrying...(' + str(retry_attempts) + '/10)')
+                    else:
+                        break
+                time.sleep(1)
             else:
-                retry_attempts += 1
-            time.sleep(1)
-        else:
-            print(response.status_code)
-            print(response.headers)
-            print(response.reason)
-            print(response.cookies)
-            print(response.raw)
-            print(response.encoding)
-            print(response.content)
-            print(response.elapsed)
-            print(response.history)
-            print(response.url)
-            print(response.links)
-            break
-    conn.close()
+                print_response(response)
+                break
 
 
 def check_login() -> bool:
@@ -194,13 +179,7 @@ def check_login() -> bool:
             print('Logged In')
             return True
     else:
-        print(response_logged_in.status_code)
-        print(response_logged_in.headers)
-        print(response_logged_in.reason)
-        print(response_logged_in.cookies)
-        print(response_logged_in.raw)
-        print(response_logged_in.encoding)
-        print(response_logged_in.elapsed)
+        print_response(response_logged_in)
         return False
 
 
@@ -216,18 +195,22 @@ def logout() -> bool:
             print('Logout was unsuccessful, you might already be logged out.')
             return False
     else:
-        print(response_logout.status_code)
-        print(response_logout.headers)
-        print(response_logout.reason)
-        print(response_logout.cookies)
-        print(response_logout.raw)
-        print(response_logout.encoding)
-        print(response_logout.content)
-        print(response_logout.elapsed)
-        print(response_logout.history)
-        print(response_logout.url)
-        print(response_logout.links)
+        print_response(response_logout)
         return False
+
+
+def print_response(resp: requests.Response):
+    print(resp.status_code)
+    print(resp.headers)
+    print(resp.reason)
+    print(resp.cookies)
+    print(resp.raw)
+    print(resp.encoding)
+    print(resp.content)
+    print(resp.elapsed)
+    print(resp.history)
+    print(resp.url)
+    print(resp.links)
 
 
 if __name__ == '__main__':
