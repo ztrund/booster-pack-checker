@@ -12,8 +12,9 @@ def menu():  # Temporary cli menu until I build gui
         print('1.Login to Steam (Increases Update Rate Significantly)')
         print('2.Update Games List and Booster Pack Prices')
         print('3.Update Trading Card Prices')
-        print('4.Check Login Status')
-        print('5.Logout of Steam')
+        print('4.Find Boosters That Are Worth It')
+        print('5.Check Login Status')
+        print('6.Logout of Steam')
         print('0.Exit')
         choice = input('Enter Selection: ')
         match choice:
@@ -24,8 +25,10 @@ def menu():  # Temporary cli menu until I build gui
             case '3':
                 update_cards()
             case '4':
-                check_login()
+                find_worth_boosters()
             case '5':
+                check_login()
+            case '6':
                 logout()
             case '0':
                 print('Exiting Program...')
@@ -101,7 +104,7 @@ def update_boosters():
                         print('Invalid Total Count Received Retrying...(' + str(retry_attempts) + '/10)')
                     else:
                         break
-                time.sleep(1)
+                time.sleep(.1)
             else:
                 print_response(response)
                 break
@@ -162,10 +165,40 @@ def update_cards():
                         print('Invalid Total Count Received Retrying...(' + str(retry_attempts) + '/10)')
                     else:
                         break
-                time.sleep(1)
+                time.sleep(.1)
             else:
                 print_response(response)
                 break
+
+
+def find_worth_boosters():
+    with sqlite3.connect('booster-packs.db') as conn:
+        cur = conn.cursor()
+        cur.execute("DROP TABLE IF EXISTS avg_cards")
+        cur.execute(""" CREATE TABLE avg_cards AS
+                        SELECT game_id, is_foil, avg(price) as avg_price --Change price here to a formula that calculates income from selling
+                        FROM cards
+                        WHERE game_id in (SELECT id
+                                          FROM packs
+                                          WHERE listings >= 5
+                                          INTERSECT 
+                                          SELECT game_id
+                                          FROM cards
+                                          GROUP BY game_id
+                                          HAVING MIN(listings) >= 5 
+                                             and AVG(is_foil) == 0.5)
+                        GROUP BY game_id, is_foil""")
+        cur.execute("DROP TABLE IF EXISTS avg_cards_min")
+        cur.execute(""" CREATE TABLE avg_cards_min AS
+                        SELECT game_id, (SELECT avg_price FROM avg_cards i WHERE i.game_id = o.game_id AND is_foil = 0) non_foil_price, (SELECT avg_price FROM avg_cards i WHERE i.game_id = o.game_id AND is_foil = 1) foil_price
+                        FROM avg_cards o
+                        GROUP BY game_id""")
+        cur.execute(""" SELECT p.id, p.name, p.price, (a.non_foil_price*3-p.price) non_foil_return, ((a.non_foil_price*.99+a.foil_price*.01)*3-p.price) with_foil_total
+                        FROM avg_cards_min a
+                        INNER JOIN packs p ON p.id = a.game_id
+                        WHERE non_foil_return > 0
+                        ORDER BY non_foil_return desc""")
+    return
 
 
 def check_login() -> bool:
