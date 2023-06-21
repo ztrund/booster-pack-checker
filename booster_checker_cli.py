@@ -3,8 +3,10 @@ import pickle
 import sqlite3
 import time
 
+import numpy as np
 import requests
 import rsa
+import pandas as pd
 
 
 def menu():  # Temporary cli menu until I build gui
@@ -171,34 +173,73 @@ def update_cards():
                 break
 
 
+def estimate_return(price):
+    if price < 22:
+        return price - 2
+    elif price == 22:
+        return 19
+    else:
+        estimated_return = price
+        while estimated_return > 0:
+            adjustment = np.floor(estimated_return * 0.05) + np.floor(estimated_return * 0.10)
+            if estimated_return + adjustment == price:
+                return estimated_return
+            else:
+                estimated_return -= 1
+        return None  # If no valid return estimate could be found
+
+
 def find_worth_boosters():
+    # connect to the database
     with sqlite3.connect('booster-packs.db') as conn:
-        cur = conn.cursor()
-        cur.execute("DROP TABLE IF EXISTS avg_cards")
-        cur.execute(""" CREATE TABLE avg_cards AS
-                        SELECT game_id, is_foil, avg(price) as avg_price --Change price here to a formula that calculates income from selling
-                        FROM cards
-                        WHERE game_id in (SELECT id
-                                          FROM packs
-                                          WHERE listings >= 5
-                                          INTERSECT 
-                                          SELECT game_id
-                                          FROM cards
-                                          GROUP BY game_id
-                                          HAVING MIN(listings) >= 5 
-                                             and AVG(is_foil) == 0.5)
-                        GROUP BY game_id, is_foil""")
-        cur.execute("DROP TABLE IF EXISTS avg_cards_min")
-        cur.execute(""" CREATE TABLE avg_cards_min AS
-                        SELECT game_id, (SELECT avg_price FROM avg_cards i WHERE i.game_id = o.game_id AND is_foil = 0) non_foil_price, (SELECT avg_price FROM avg_cards i WHERE i.game_id = o.game_id AND is_foil = 1) foil_price
-                        FROM avg_cards o
-                        GROUP BY game_id""")
-        cur.execute(""" SELECT p.id, p.name, p.price, (a.non_foil_price*3-p.price) non_foil_return, ((a.non_foil_price*.99+a.foil_price*.01)*3-p.price) with_foil_total
-                        FROM avg_cards_min a
-                        INNER JOIN packs p ON p.id = a.game_id
-                        WHERE non_foil_return > 0
-                        ORDER BY non_foil_return desc""")
-    return
+        # drop the 'worth_boosters' table if it exists
+        conn.execute("DROP TABLE IF EXISTS worth_boosters")
+
+        # query to get packs with listings >= 5
+        packs_query = """
+        SELECT p.id pack_id, p.name pack_name, p.price pack_price
+        FROM packs p
+        WHERE p.listings >= 5
+        """
+        packs_df = pd.read_sql_query(packs_query, conn)
+
+        # query to get cards where all the cards with the same game_id have listings >=5
+        cards_query = """
+        SELECT c.game_id, c.is_foil, c.price card_price
+        FROM cards c
+        WHERE c.game_id IN (
+            SELECT game_id
+            FROM cards
+            GROUP BY game_id
+            HAVING MIN(listings) >= 5 AND
+                   COUNT(CASE WHEN is_foil = 1 THEN 1 END) = COUNT(CASE WHEN is_foil = 0 THEN 1 END)
+        )
+        """
+        cards_df = pd.read_sql_query(cards_query, conn)
+
+        # estimate return for each card
+        cards_df['estimated_return'] = cards_df['card_price'].apply(estimate_return)
+
+        # calculate average price for each 'game_id' and 'is_foil' combination
+        avg_cards = cards_df.groupby(['game_id', 'is_foil']).card_price.mean().unstack().reset_index().rename(
+            columns={0: 'non_foil_price', 1: 'foil_price'})
+
+        # merge the packs data with the averages
+        merged = pd.merge(packs_df, avg_cards, left_on='pack_id', right_on='game_id')
+
+        # calculate the returns
+        merged['non_foil_return'] = merged['non_foil_price'] * 3 - merged['pack_price']
+        merged['with_foil_total'] = (merged['non_foil_price'] * .99 + merged['foil_price'] * .01) * 3 - merged[
+            'pack_price']
+
+        # filter where 'non_foil_return' > 0
+        filtered = merged[merged['non_foil_return'] > 0].sort_values('non_foil_return', ascending=False)
+
+        # drop unwanted columns
+        filtered = filtered.drop(columns=['game_id', 'non_foil_price', 'foil_price'])
+
+        # store the results in a new table 'results' in the SQLite database
+        filtered.to_sql('worth_boosters', conn, if_exists='replace', index=False)
 
 
 def check_login() -> bool:
