@@ -59,7 +59,7 @@ def find_worth_boosters():
 
         # calculate the returns in usd
         merged['non_foil_return'] = (merged['non_foil_price'] * 3 - merged['pack_price']) / 100
-        merged['with_foil_total'] = ((merged['non_foil_price'] * .99 + merged['foil_price'] * .01) * 3 - merged[
+        merged['with_foil_return'] = ((merged['non_foil_price'] * .99 + merged['foil_price'] * .01) * 3 - merged[
             'pack_price']) / 100
         merged['pack_price'] = merged['pack_price'] / 100
 
