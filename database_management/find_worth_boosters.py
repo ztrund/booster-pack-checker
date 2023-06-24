@@ -22,6 +22,20 @@ def estimate_return(price):
 
 def find_worth_boosters():
     with sqlite3.connect('booster-packs.db') as conn:
+        cur = conn.cursor()
+
+        # check if 'packs' table exists and returns if it doesn't
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='packs';")
+        if cur.fetchone() is None:
+            print("Please run '2.Update Games List and Booster Pack Prices' before this to create 'packs' table")
+            return
+
+        # check if 'cards' table exists and returns if it doesn't
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='cards';")
+        if cur.fetchone() is None:
+            print("Please run '3.Update Trading Card Prices' before this to create 'cards' table")
+            return
+
         # drop the 'worth_boosters' table if it exists
         conn.execute("DROP TABLE IF EXISTS worth_boosters")
 
