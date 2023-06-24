@@ -1,20 +1,23 @@
 import pickle
+
 import requests
 
 from database_management.find_worth_boosters import find_worth_boosters
 from database_management.update_boosters import update_boosters
 from database_management.update_cards import update_cards
+from helpers.print_worth_boosters import print_worth_boosters
 from helpers.session_management import login, check_login, logout
 
 
-def menu():  # Temporary cli menu until I build gui
+def menu():
     while True:
         print('1.Login to Steam (Increases Update Rate Significantly)')
         print('2.Update Games List and Booster Pack Prices')
         print('3.Update Trading Card Prices')
         print('4.Find Boosters That Are Worth It')
-        print('5.Check Login Status')
-        print('6.Logout of Steam')
+        print('5.Print Boosters That Are Worth It')
+        print('6.Check Login Status')
+        print('7.Logout of Steam')
         print('0.Exit')
         choice = input('Enter Selection: ')
         match choice:
@@ -27,8 +30,10 @@ def menu():  # Temporary cli menu until I build gui
             case '4':
                 find_worth_boosters()
             case '5':
-                check_login(req_sess)
+                print_worth_boosters()
             case '6':
+                check_login(req_sess)
+            case '7':
                 logout(req_sess)
             case '0':
                 print('Exiting Program...')

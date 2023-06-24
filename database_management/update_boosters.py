@@ -45,8 +45,6 @@ def update_boosters(req_sess):
                     conn.commit()
                     start += 100
                     print('Updated (' + str(start) + '/' + str(data['total_count']) + ') Packs')
-                    # if start >= 1000:
-                    #     break
                     if start >= data['total_count']:
                         print('Updating Packs Complete')
                         break

@@ -21,7 +21,6 @@ def estimate_return(price):
 
 
 def find_worth_boosters():
-    # connect to the database
     with sqlite3.connect('booster-packs.db') as conn:
         # drop the 'worth_boosters' table if it exists
         conn.execute("DROP TABLE IF EXISTS worth_boosters")
@@ -58,10 +57,11 @@ def find_worth_boosters():
         # merge the packs data with the averages
         merged = pd.merge(packs_df, avg_cards, left_on='pack_id', right_on='game_id')
 
-        # calculate the returns
-        merged['non_foil_return'] = merged['non_foil_price'] * 3 - merged['pack_price']
-        merged['with_foil_total'] = (merged['non_foil_price'] * .99 + merged['foil_price'] * .01) * 3 - merged[
-            'pack_price']
+        # calculate the returns in usd
+        merged['non_foil_return'] = (merged['non_foil_price'] * 3 - merged['pack_price']) / 100
+        merged['with_foil_total'] = ((merged['non_foil_price'] * .99 + merged['foil_price'] * .01) * 3 - merged[
+            'pack_price']) / 100
+        merged['pack_price'] = merged['pack_price'] / 100
 
         # filter where 'non_foil_return' > 0
         filtered = merged[merged['non_foil_return'] > 0].sort_values('non_foil_return', ascending=False)
@@ -69,5 +69,5 @@ def find_worth_boosters():
         # drop unwanted columns
         filtered = filtered.drop(columns=['game_id', 'non_foil_price', 'foil_price'])
 
-        # store the results in a new table 'results' in the SQLite database
+        # store the results in a new table 'worth_boosters' in the SQLite database
         filtered.to_sql('worth_boosters', conn, if_exists='replace', index=False)
